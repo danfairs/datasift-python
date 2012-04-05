@@ -1,4 +1,5 @@
 import json
+import logging
 try:
     import gevent
     import requests
@@ -8,6 +9,9 @@ except ImportError:
     HAS_DEPS = False
 
 from datasift import StreamConsumer
+
+
+logger = logging.getLogger(__name__)
 
 
 def factory(user, definition, event_handler):
@@ -36,6 +40,7 @@ class StreamConsumer_HTTPGevent(StreamConsumer):
 
 
 class StreamConsumer_HTTPGeventRunner(object):
+    url = None
 
     def __init__(self, consumer, auto_reconnect=True):
         self._consumer = consumer
@@ -60,17 +65,21 @@ class StreamConsumer_HTTPGeventRunner(object):
                     'Auth': '%s' % self._consumer._get_auth_header(),
                     'User-Agent': self._consumer._get_user_agent(),
                 }
-                resp = requests.get(
-                    self._consumer._get_url(),
-                    data=None,
-                    headers=headers
-                )
+                self.url = self._consumer._get_url()
+                logger.debug('DataSift URL: %s' % self.url)
+                resp = requests.get(self.url, data=None, headers=headers)
 
                 resp_code = resp.status_code
+                logger.debug('%s -> %s' % (self.url, resp_code))
                 if resp_code == 200:
                     connection_delay = 0
                     self._consumer._on_connect()
+                    logger.debug('%s reading...' % self.url)
                     self._read_stream(resp)
+                    logger.debug('%s stream closed, consumer running: %s' % (
+                        self.url,
+                        self._consumer._is_running(True)
+                    ))
 
                 elif resp_code >= 400 and resp_code < 500 and resp_code != 420:
                     json_data = 'init'
@@ -126,3 +135,4 @@ class StreamConsumer_HTTPGeventRunner(object):
                 return
             if line:
                 self._consumer._on_data(line)
+        logger.debug('%s stream finished, may restart...' % self.url)
