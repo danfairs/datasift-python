@@ -32,8 +32,9 @@ class StreamConsumer_HTTPGevent(StreamConsumer):
         return self.greenlet.successful()
 
     def kill(self):
-        """ Forcibly terminate the streamer """
+        """ Forcibly terminate the streamer, and close its connection """
         self.greenlet.kill()
+        self.runner.close()
 
     def run_forever(self):
         raise NotImplementedError()
@@ -41,6 +42,7 @@ class StreamConsumer_HTTPGevent(StreamConsumer):
 
 class StreamConsumer_HTTPGeventRunner(object):
     url = None
+    _current_response = None
 
     def __init__(self, consumer, auto_reconnect=True):
         self._consumer = consumer
@@ -48,6 +50,10 @@ class StreamConsumer_HTTPGeventRunner(object):
 
     def run(self):
         return gevent.spawn(self._run)
+
+    def close(self):
+        if self._current_response is not None:
+            self._current_response.raw.release_conn()
 
     def _run(self):
         connection_delay = 0
@@ -130,9 +136,13 @@ class StreamConsumer_HTTPGeventRunner(object):
         self._consumer._on_disconnect()
 
     def _read_stream(self, resp):
-        for line in resp.iter_lines():
-            if not self._consumer._is_running(False):
-                return
-            if line:
-                self._consumer._on_data(line)
-        logger.debug('%s stream finished, may restart...' % self.url)
+        try:
+            self._current_response = resp
+            for line in resp.iter_lines():
+                if not self._consumer._is_running(False):
+                    return
+                if line:
+                    self._consumer._on_data(line)
+            logger.debug('%s stream finished, may restart...' % self.url)
+        finally:
+            self.close()
