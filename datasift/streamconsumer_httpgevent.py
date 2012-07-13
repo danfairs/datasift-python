@@ -1,5 +1,6 @@
 import json
 import logging
+import socket
 try:
     import gevent
     import requests
@@ -27,6 +28,12 @@ class StreamConsumer_HTTPGevent(StreamConsumer):
         self.runner = StreamConsumer_HTTPGeventRunner(self)
         self.greenlet = self.runner.run()
 
+    def stop(self):
+        StreamConsumer.stop(self)
+        gevent.sleep()
+        if not self.join_thread(timeout=5):
+            self.kill()
+
     def join_thread(self, timeout=None):
         self.greenlet.join(timeout=timeout)
         return self.greenlet.successful()
@@ -53,7 +60,18 @@ class StreamConsumer_HTTPGeventRunner(object):
 
     def close(self):
         if self._current_response is not None:
+            # Requests doesn't have a clean API to actually close the
+            # socket properly. Dig through multiple levels of private APIs
+            # to close the socket ourselves. Icky.
             self._current_response.raw.release_conn()
+            sock = self._current_response.raw._fp.fp._sock
+            try:
+                logger.info('Forcibly closing socket')
+                sock.shutdown(socket.SHUT_RDWR)
+                sock.close()
+            except socket.error:
+                pass
+            self._current_response = None
 
     def _run(self):
         connection_delay = 0
