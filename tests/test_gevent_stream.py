@@ -44,3 +44,29 @@ class TestGeventStream(unittest.TestCase):
         response.iter_lines.return_value = []
         stream, handler = self._make_stream(auto_reconnect=False)
         stream._run()
+
+    def test_force_close(self):
+        from datasift.streamconsumer_httpgevent import \
+            StreamConsumer_HTTPGeventRunner
+        runner = StreamConsumer_HTTPGeventRunner(None)
+        current_response = mock.Mock()
+        sock = mock.Mock()
+        release_conn = current_response.raw.release_conn
+        current_response.raw._fp.fp._sock = sock
+        runner._current_response = current_response
+        runner.close()
+
+        self.assertTrue(release_conn.called)
+        self.assertTrue(sock.shutdown.called)
+        self.assertTrue(sock.close.called)
+
+    def test_force_close_none(self):
+        from datasift.streamconsumer_httpgevent import \
+            StreamConsumer_HTTPGeventRunner
+        runner = StreamConsumer_HTTPGeventRunner(None)
+        current_response = mock.Mock()
+        current_response.raw._fp.fp = None
+        release_conn = current_response.raw.release_conn
+        runner._current_response = current_response
+        runner.close()
+        self.assertTrue(release_conn.called)

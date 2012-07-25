@@ -64,13 +64,14 @@ class StreamConsumer_HTTPGeventRunner(object):
             # socket properly. Dig through multiple levels of private APIs
             # to close the socket ourselves. Icky.
             self._current_response.raw.release_conn()
-            sock = self._current_response.raw._fp.fp._sock
-            try:
-                logger.info('Forcibly closing socket')
-                sock.shutdown(socket.SHUT_RDWR)
-                sock.close()
-            except socket.error:
-                pass
+            if self._current_response.raw._fp.fp is not None:
+                sock = self._current_response.raw._fp.fp._sock
+                try:
+                    logger.debug('Forcibly closing socket')
+                    sock.shutdown(socket.SHUT_RDWR)
+                    sock.close()
+                except socket.error:
+                    pass
             self._current_response = None
 
     def _run(self):
